@@ -1,0 +1,25 @@
+{
+  "tests": [
+    {
+      "name": "Get current quotes for default tickers",
+      "method": "GET",
+      "path": "/?action=quotes",
+      "expectedStatus": 200,
+      "expectedBody": {
+        "quotes": "array"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Get history for SBER",
+      "method": "GET",
+      "path": "/?action=history&ticker=SBER&days=7",
+      "expectedStatus": 200,
+      "expectedBody": {
+        "ticker": "SBER",
+        "history": "array"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

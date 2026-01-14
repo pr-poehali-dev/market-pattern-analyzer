@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -17,17 +17,28 @@ import {
   ReferenceLine,
 } from 'recharts';
 
-const mockStockData = [
-  { time: '09:00', price: 2850, volume: 1200 },
-  { time: '10:00', price: 2865, volume: 1450 },
-  { time: '11:00', price: 2840, volume: 1600 },
-  { time: '12:00', price: 2880, volume: 1800 },
-  { time: '13:00', price: 2920, volume: 2100 },
-  { time: '14:00', price: 2895, volume: 1900 },
-  { time: '15:00', price: 2930, volume: 2300 },
-  { time: '16:00', price: 2950, volume: 2500 },
-  { time: '17:00', price: 2975, volume: 2200 },
-];
+const MOEX_API = 'https://functions.poehali.dev/b2495c20-15db-42d9-8df9-14a0de5bcb1f';
+
+interface StockQuote {
+  ticker: string;
+  name: string;
+  price: number;
+  change: number;
+  changePercent: number;
+  volume: number;
+  high: number;
+  low: number;
+  open: number;
+}
+
+interface HistoryCandle {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
 
 const patterns = [
   {
@@ -68,26 +79,81 @@ const patterns = [
   },
 ];
 
-const signals = [
-  { ticker: 'SBER', signal: 'ПОКУПКА', price: 295.4, change: 2.3, strength: 'strong' },
-  { ticker: 'GAZP', signal: 'ПОКУПКА', price: 167.2, change: 1.8, strength: 'medium' },
-  { ticker: 'LKOH', signal: 'ПРОДАЖА', price: 6543, change: -1.2, strength: 'strong' },
-  { ticker: 'YNDX', signal: 'УДЕРЖАНИЕ', price: 2950, change: 0.5, strength: 'weak' },
-  { ticker: 'ROSN', signal: 'ПОКУПКА', price: 543.2, change: 3.1, strength: 'strong' },
-];
+const getSignal = (changePercent: number) => {
+  if (changePercent > 2) return { signal: 'ПОКУПКА', strength: 'strong' };
+  if (changePercent > 1) return { signal: 'ПОКУПКА', strength: 'medium' };
+  if (changePercent < -2) return { signal: 'ПРОДАЖА', strength: 'strong' };
+  if (changePercent < -1) return { signal: 'ПРОДАЖА', strength: 'medium' };
+  return { signal: 'УДЕРЖАНИЕ', strength: 'weak' };
+};
 
-const portfolio = [
-  { ticker: 'SBER', shares: 100, avgPrice: 280.5, current: 295.4, pl: 1490 },
-  { ticker: 'GAZP', shares: 200, avgPrice: 165.0, current: 167.2, pl: 440 },
-  { ticker: 'LKOH', shares: 10, avgPrice: 6600, current: 6543, pl: -570 },
-  { ticker: 'YNDX', shares: 5, avgPrice: 2900, current: 2950, pl: 250 },
+const portfolioBase = [
+  { ticker: 'SBER', shares: 100, avgPrice: 280.5 },
+  { ticker: 'GAZP', shares: 200, avgPrice: 165.0 },
+  { ticker: 'LKOH', shares: 10, avgPrice: 6600 },
 ];
 
 export default function Index() {
-  const [selectedStock, setSelectedStock] = useState('YNDX');
+  const [selectedStock, setSelectedStock] = useState('SBER');
+  const [quotes, setQuotes] = useState<StockQuote[]>([]);
+  const [history, setHistory] = useState<HistoryCandle[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const portfolio = portfolioBase.map(item => {
+    const quote = getQuoteByTicker(item.ticker);
+    const current = quote?.price || item.avgPrice;
+    const pl = (current - item.avgPrice) * item.shares;
+    return { ...item, current, pl };
+  });
 
   const totalPL = portfolio.reduce((sum, item) => sum + item.pl, 0);
   const totalValue = portfolio.reduce((sum, item) => sum + item.shares * item.current, 0);
+
+  useEffect(() => {
+    fetchQuotes();
+    const interval = setInterval(fetchQuotes, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    fetchHistory(selectedStock);
+  }, [selectedStock]);
+
+  const fetchQuotes = async () => {
+    try {
+      const response = await fetch(`${MOEX_API}?action=quotes&tickers=SBER,GAZP,LKOH,YNDX,ROSN`);
+      const data = await response.json();
+      setQuotes(data.quotes || []);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error fetching quotes:', error);
+      setLoading(false);
+    }
+  };
+
+  const fetchHistory = async (ticker: string) => {
+    try {
+      const response = await fetch(`${MOEX_API}?action=history&ticker=${ticker}&days=30`);
+      const data = await response.json();
+      setHistory(data.history || []);
+    } catch (error) {
+      console.error('Error fetching history:', error);
+    }
+  };
+
+  const getQuoteByTicker = (ticker: string) => {
+    return quotes.find(q => q.ticker === ticker);
+  };
+
+  const selectedQuote = getQuoteByTicker(selectedStock);
+  const moexIndex = quotes.length > 0 ? quotes[0].price : 3245.67;
+  const moexChange = quotes.length > 0 ? quotes[0].changePercent : 1.23;
+
+  const chartData = history.slice(-20).map(candle => ({
+    time: new Date(candle.date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }),
+    price: candle.close,
+    volume: Math.floor(candle.volume / 1000),
+  }));
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-6">
@@ -119,10 +185,16 @@ export default function Index() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">3,245.67</div>
+              <div className="text-2xl font-bold">{loading ? '...' : moexIndex.toFixed(2)}</div>
               <div className="flex items-center gap-1 mt-1">
-                <Icon name="TrendingUp" size={16} className="text-success" />
-                <span className="text-success text-sm font-medium">+1.23%</span>
+                {moexChange >= 0 ? (
+                  <Icon name="TrendingUp" size={16} className="text-success" />
+                ) : (
+                  <Icon name="TrendingDown" size={16} className="text-destructive" />
+                )}
+                <span className={`text-sm font-medium ${moexChange >= 0 ? 'text-success' : 'text-destructive'}`}>
+                  {moexChange >= 0 ? '+' : ''}{moexChange.toFixed(2)}%
+                </span>
               </div>
             </CardContent>
           </Card>
@@ -214,9 +286,17 @@ export default function Index() {
                 <div className="flex items-center justify-between">
                   <CardTitle className="flex items-center gap-2">
                     График цены {selectedStock}
-                    <Badge variant="outline" className="bg-success/10 text-success border-success/30">
-                      +0.85%
-                    </Badge>
+                    {selectedQuote && (
+                      <Badge 
+                        variant="outline" 
+                        className={selectedQuote.changePercent >= 0 
+                          ? 'bg-success/10 text-success border-success/30'
+                          : 'bg-destructive/10 text-destructive border-destructive/30'
+                        }
+                      >
+                        {selectedQuote.changePercent >= 0 ? '+' : ''}{selectedQuote.changePercent.toFixed(2)}%
+                      </Badge>
+                    )}
                   </CardTitle>
                   <div className="flex gap-2">
                     {['SBER', 'GAZP', 'LKOH', 'YNDX'].map((ticker) => (
@@ -233,8 +313,17 @@ export default function Index() {
                 </div>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={400}>
-                  <AreaChart data={mockStockData}>
+                {loading ? (
+                  <div className="h-[400px] flex items-center justify-center">
+                    <div className="text-muted-foreground">Загрузка данных...</div>
+                  </div>
+                ) : chartData.length === 0 ? (
+                  <div className="h-[400px] flex items-center justify-center">
+                    <div className="text-muted-foreground">Нет данных для отображения</div>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={400}>
+                    <AreaChart data={chartData}>
                     <defs>
                       <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="hsl(var(--secondary))" stopOpacity={0.3} />
@@ -264,8 +353,9 @@ export default function Index() {
                       strokeDasharray="5 5"
                       label={{ value: 'Сопротивление', fill: 'hsl(var(--primary))' }}
                     />
-                  </AreaChart>
-                </ResponsiveContainer>
+                    </AreaChart>
+                  </ResponsiveContainer>
+                )}
               </CardContent>
             </Card>
 
@@ -274,8 +364,13 @@ export default function Index() {
                 <CardTitle>Объём торгов</CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={200}>
-                  <LineChart data={mockStockData}>
+                {chartData.length === 0 ? (
+                  <div className="h-[200px] flex items-center justify-center">
+                    <div className="text-muted-foreground">Нет данных</div>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={200}>
+                    <LineChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                     <XAxis dataKey="time" stroke="hsl(var(--muted-foreground))" />
                     <YAxis stroke="hsl(var(--muted-foreground))" />
@@ -292,8 +387,9 @@ export default function Index() {
                       stroke="hsl(var(--primary))"
                       strokeWidth={2}
                     />
-                  </LineChart>
-                </ResponsiveContainer>
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -371,66 +467,69 @@ export default function Index() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {signals.map((signal, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="text-lg font-bold">{signal.ticker}</div>
-                        <Badge
-                          variant="outline"
-                          className={
-                            signal.signal === 'ПОКУПКА'
-                              ? 'bg-success/10 text-success border-success/30'
-                              : signal.signal === 'ПРОДАЖА'
-                              ? 'bg-destructive/10 text-destructive border-destructive/30'
-                              : 'bg-muted text-muted-foreground'
-                          }
-                        >
-                          {signal.signal}
-                        </Badge>
-                        <div className="flex items-center gap-1">
-                          {signal.change >= 0 ? (
-                            <Icon name="TrendingUp" size={16} className="text-success" />
-                          ) : (
-                            <Icon name="TrendingDown" size={16} className="text-destructive" />
-                          )}
-                          <span
-                            className={`text-sm font-medium ${
-                              signal.change >= 0 ? 'text-success' : 'text-destructive'
-                            }`}
-                          >
-                            {signal.change > 0 ? '+' : ''}
-                            {signal.change}%
-                          </span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xl font-bold">
-                          {signal.price.toLocaleString('ru-RU')} ₽
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          Сила сигнала:{' '}
-                          <span
+                  {quotes.map((quote) => {
+                    const signalData = getSignal(quote.changePercent);
+                    return (
+                      <div
+                        key={quote.ticker}
+                        className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="text-lg font-bold">{quote.ticker}</div>
+                          <Badge
+                            variant="outline"
                             className={
-                              signal.strength === 'strong'
-                                ? 'text-success'
-                                : signal.strength === 'medium'
-                                ? 'text-secondary'
-                                : 'text-muted-foreground'
+                              signalData.signal === 'ПОКУПКА'
+                                ? 'bg-success/10 text-success border-success/30'
+                                : signalData.signal === 'ПРОДАЖА'
+                                ? 'bg-destructive/10 text-destructive border-destructive/30'
+                                : 'bg-muted text-muted-foreground'
                             }
                           >
-                            {signal.strength === 'strong'
-                              ? 'Высокая'
-                              : signal.strength === 'medium'
-                              ? 'Средняя'
-                              : 'Низкая'}
-                          </span>
+                            {signalData.signal}
+                          </Badge>
+                          <div className="flex items-center gap-1">
+                            {quote.changePercent >= 0 ? (
+                              <Icon name="TrendingUp" size={16} className="text-success" />
+                            ) : (
+                              <Icon name="TrendingDown" size={16} className="text-destructive" />
+                            )}
+                            <span
+                              className={`text-sm font-medium ${
+                                quote.changePercent >= 0 ? 'text-success' : 'text-destructive'
+                              }`}
+                            >
+                              {quote.changePercent > 0 ? '+' : ''}
+                              {quote.changePercent.toFixed(2)}%
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-xl font-bold">
+                            {quote.price.toLocaleString('ru-RU')} ₽
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Сила сигнала:{' '}
+                            <span
+                              className={
+                                signalData.strength === 'strong'
+                                  ? 'text-success'
+                                  : signalData.strength === 'medium'
+                                  ? 'text-secondary'
+                                  : 'text-muted-foreground'
+                              }
+                            >
+                              {signalData.strength === 'strong'
+                                ? 'Высокая'
+                                : signalData.strength === 'medium'
+                                ? 'Средняя'
+                                : 'Низкая'}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>
