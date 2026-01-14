@@ -99,16 +99,6 @@ export default function Index() {
   const [history, setHistory] = useState<HistoryCandle[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const portfolio = portfolioBase.map(item => {
-    const quote = getQuoteByTicker(item.ticker);
-    const current = quote?.price || item.avgPrice;
-    const pl = (current - item.avgPrice) * item.shares;
-    return { ...item, current, pl };
-  });
-
-  const totalPL = portfolio.reduce((sum, item) => sum + item.pl, 0);
-  const totalValue = portfolio.reduce((sum, item) => sum + item.shares * item.current, 0);
-
   useEffect(() => {
     fetchQuotes();
     const interval = setInterval(fetchQuotes, 60000);
@@ -144,6 +134,16 @@ export default function Index() {
   const getQuoteByTicker = (ticker: string) => {
     return quotes.find(q => q.ticker === ticker);
   };
+
+  const portfolio = portfolioBase.map(item => {
+    const quote = getQuoteByTicker(item.ticker);
+    const current = quote?.price || item.avgPrice;
+    const pl = (current - item.avgPrice) * item.shares;
+    return { ...item, current, pl };
+  });
+
+  const totalPL = portfolio.reduce((sum, item) => sum + item.pl, 0);
+  const totalValue = portfolio.reduce((sum, item) => sum + item.shares * item.current, 0);
 
   const selectedQuote = getQuoteByTicker(selectedStock);
   const moexIndex = quotes.length > 0 ? quotes[0].price : 3245.67;
