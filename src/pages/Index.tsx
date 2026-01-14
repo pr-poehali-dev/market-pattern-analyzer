@@ -159,13 +159,23 @@ export default function Index() {
     <div className="min-h-screen bg-background p-4 md:p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         <header className="flex items-center justify-between">
-          <div>
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-              MOEX Analytics
-            </h1>
-            <p className="text-muted-foreground mt-1">
-              Анализ биржевых паттернов в реальном времени
-            </p>
+          <div className="flex items-center gap-4">
+            <Button 
+              variant="outline" 
+              size="icon"
+              onClick={() => window.history.back()}
+              className="hover:bg-primary/10"
+            >
+              <Icon name="ArrowLeft" size={20} />
+            </Button>
+            <div>
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+                MOEX Analytics
+              </h1>
+              <p className="text-muted-foreground mt-1">
+                Анализ биржевых паттернов в реальном времени
+              </p>
+            </div>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="icon">
